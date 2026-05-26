@@ -12,9 +12,9 @@ plant_mission_node:
 
     zone_ids: ["plant_a", "plant_b", "plant_c"]
     zone_names: ["North bed", "Center bed", "South bed"]
-    zone_x: [0.65, 0.65, 0.00]
-    zone_y: [0.00, 0.75, 0.75]
-    zone_yaw: [0.00, 1.57, 3.14]
+    zone_x: [0.30, 0.30, 0.00]
+    zone_y: [-0.20, -0.60, -0.60]
+    zone_yaw: [0.00, -1.57, 3.14]
     zone_residue_indices: [0.18, 0.74, 0.31]
     zone_expected_statuses: ["OK", "OVERUSE", "OK"]
 
@@ -37,9 +37,9 @@ inspection_twin_node:
 
     zone_ids: ["plant_a", "plant_b", "plant_c"]
     zone_names: ["North bed", "Center bed", "South bed"]
-    zone_x: [0.65, 0.65, 0.00]
-    zone_y: [0.00, 0.75, 0.75]
-    zone_yaw: [0.00, 1.57, 3.14]
+    zone_x: [0.30, 0.30, 0.00]
+    zone_y: [-0.20, -0.60, -0.60]
+    zone_yaw: [0.00, -1.57, 3.14]
     zone_residue_indices: [0.18, 0.74, 0.31]
     zone_expected_statuses: ["OK", "OVERUSE", "OK"]
 
