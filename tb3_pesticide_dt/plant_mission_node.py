@@ -26,13 +26,31 @@ from tb3_pesticide_dt.pesticide_logic import (
 )
 
 
-DEFAULT_ZONE_IDS = ["plant_a", "plant_b", "plant_c"]
-DEFAULT_ZONE_NAMES = ["North bed", "Center bed", "South bed"]
-DEFAULT_ZONE_X = [0.65, 0.65, 0.0]
-DEFAULT_ZONE_Y = [0.0, 0.75, 0.75]
-DEFAULT_ZONE_YAW = [0.0, 1.57, 3.14]
-DEFAULT_RESIDUES = [0.18, 0.74, 0.31]
-DEFAULT_STATUSES = ["OK", "OVERUSE", "OK"]
+DEFAULT_ZONE_IDS = [
+    "plant_a",
+    "plant_b",
+    "plant_c",
+    "plant_d",
+    "plant_e",
+    "plant_f",
+    "plant_g",
+    "plant_h",
+]
+DEFAULT_ZONE_NAMES = [
+    "Start bed",
+    "North inner bed",
+    "East row",
+    "Far east bed",
+    "South east bed",
+    "South center bed",
+    "West lower bed",
+    "West return bed",
+]
+DEFAULT_ZONE_X = [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
+DEFAULT_ZONE_Y = [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
+DEFAULT_ZONE_YAW = [0.0, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+DEFAULT_RESIDUES = [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
+DEFAULT_STATUSES = ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
 
 
 class PlantMissionNode(Node):
@@ -64,6 +82,7 @@ class PlantMissionNode(Node):
         self.digital_camera_health = "unknown"
         self.digital_mode = "unknown"
         self.last_state_publish_at = 0.0
+        self.last_summary_publish_at = 0.0
 
         self.create_subscription(Odometry, self.odom_topic, self.on_odom, 10)
         self.create_subscription(String, self.result_topic, self.on_inspection_result, 10)
@@ -115,6 +134,7 @@ class PlantMissionNode(Node):
         self.declare_parameter("overuse_alert_hold_s", 2.0)
         self.declare_parameter("overuse_next_speed_scale", 0.70)
         self.declare_parameter("degraded_camera_speed_scale", 0.75)
+        self.declare_parameter("summary_republish_period_s", 5.0)
         self.declare_parameter("frame_id", "base_link")
 
     def _load_zones(self):
@@ -197,6 +217,7 @@ class PlantMissionNode(Node):
 
         if self.mode == "COMPLETE":
             self.publish_stop()
+            self.republish_summary_if_due(now)
             self.publish_state(force=False)
             return
 
@@ -383,6 +404,14 @@ class PlantMissionNode(Node):
             "inspections": self.summary,
         }
         self.pub_log.publish(String(data=json.dumps(payload, sort_keys=True)))
+
+    def republish_summary_if_due(self, now: float):
+        period = float(self.get_parameter("summary_republish_period_s").value)
+        if period <= 0.0:
+            return
+        if (now - self.last_summary_publish_at) >= period:
+            self.last_summary_publish_at = now
+            self.publish_summary()
 
 
 def main(args=None):

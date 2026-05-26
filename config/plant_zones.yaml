@@ -13,13 +13,13 @@ plant_mission_node:
 
     # Coordinates are relative to the odom frame at robot startup.
     # Tune these in the wooden arena so each waypoint stops in front of a plant marker.
-    zone_ids: ["plant_a", "plant_b", "plant_c"]
-    zone_names: ["North bed", "Center bed", "South bed"]
-    zone_x: [0.30, 0.30, 0.00]
-    zone_y: [-0.20, -0.60, -0.60]
-    zone_yaw: [0.00, -1.57, 3.14]
-    zone_residue_indices: [0.18, 0.74, 0.31]
-    zone_expected_statuses: ["OK", "OVERUSE", "OK"]
+    zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
+    zone_names: ["Start bed", "North inner bed", "East row", "Far east bed", "South east bed", "South center bed", "West lower bed", "West return bed"]
+    zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
+    zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
+    zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+    zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
+    zone_expected_statuses: ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
 
     arrival_tolerance_m: 0.12
     yaw_tolerance_rad: 0.25
@@ -28,6 +28,7 @@ plant_mission_node:
     inspection_duration_s: 3.0
     inspection_result_timeout_s: 8.0
     overuse_alert_hold_s: 2.0
+    summary_republish_period_s: 5.0
 
 inspection_twin_node:
   ros__parameters:
@@ -38,13 +39,13 @@ inspection_twin_node:
     safety_state_topic: /dt/safety_state
     marker_topic: /dt/digital/plant_markers
 
-    zone_ids: ["plant_a", "plant_b", "plant_c"]
-    zone_names: ["North bed", "Center bed", "South bed"]
-    zone_x: [0.30, 0.30, 0.00]
-    zone_y: [-0.20, -0.60, -0.60]
-    zone_yaw: [0.00, -1.57, 3.14]
-    zone_residue_indices: [0.18, 0.74, 0.31]
-    zone_expected_statuses: ["OK", "OVERUSE", "OK"]
+    zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
+    zone_names: ["Start bed", "North inner bed", "East row", "Far east bed", "South east bed", "South center bed", "West lower bed", "West return bed"]
+    zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
+    zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
+    zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+    zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
+    zone_expected_statuses: ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
 
     residue_overuse_threshold: 0.50
     processing_delay_s: 1.0

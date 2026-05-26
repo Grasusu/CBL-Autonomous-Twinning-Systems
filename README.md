@@ -2,7 +2,7 @@
 
 ROS 2 Jazzy proof of concept for the final 2IRR10 digital twin demo.
 
-The robot autonomously drives to predefined plant zones, waits to simulate inspection, asks the digital twin for a simulated hyperspectral pesticide-residue result, logs `OK` or `OVERUSE`, then continues to the next zone. Motion commands still pass through the scanner mini-project safety pattern:
+The robot autonomously drives to predefined plant zones, waits to simulate inspection, asks the digital twin for a simulated hyperspectral pesticide-residue result, logs `OK` or `OVERUSE`, then continues to the next zone. After finishing, it republishes `MISSION_SUMMARY` every few seconds so late evidence terminals still show the final result. Motion commands still pass through the scanner mini-project safety pattern:
 
 ```text
 plant_mission_node -> /cmd_vel_raw -> twin_safety_node -> /cmd_vel and /sim/cmd_vel
@@ -131,13 +131,13 @@ Edit `config/plant_zones.yaml` for the real + twin demo, or `config/sim_only.yam
 Keep these arrays the same length:
 
 ```yaml
-zone_ids: [plant_a, plant_b, plant_c]
-zone_names: [North bed, Center bed, South bed]
-zone_x: [0.65, 0.65, 0.00]
-zone_y: [0.00, 0.75, 0.75]
-zone_yaw: [0.00, 1.57, 3.14]
-zone_residue_indices: [0.18, 0.74, 0.31]
-zone_expected_statuses: [OK, OVERUSE, OK]
+zone_ids: [plant_a, plant_b, plant_c, plant_d, plant_e, plant_f, plant_g, plant_h]
+zone_names: [Start bed, North inner bed, East row, Far east bed, South east bed, South center bed, West lower bed, West return bed]
+zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
+zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
+zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
+zone_expected_statuses: [OK, OVERUSE, OK, OVERUSE, OK, OVERUSE, OK, OVERUSE]
 ```
 
 Coordinates are relative to the robot odometry frame when the robot starts. Put the robot at a consistent start pose in the wooden arena before launching the mission.
@@ -154,4 +154,3 @@ git branch -M main
 git remote add origin <YOUR_GITHUB_REPO_URL>
 git push -u origin main
 ```
-
