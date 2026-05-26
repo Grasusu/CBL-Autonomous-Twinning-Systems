@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple
 
 import rclpy
 from geometry_msgs.msg import TwistStamped
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
@@ -151,8 +152,11 @@ class TwinSafetyNode(Node):
         self.publish_state(blocked, reasons, msg, out)
 
         if self.last_blocked is None or self.last_blocked != blocked:
-            level = self.get_logger().warn if blocked else self.get_logger().info
-            level(f"safety_blocked={blocked} reasons={','.join(reasons) or 'clear'}")
+            text = f"safety_blocked={blocked} reasons={','.join(reasons) or 'clear'}"
+            if blocked:
+                self.get_logger().warn(text)
+            else:
+                self.get_logger().info(text)
             self.last_blocked = blocked
 
     def compute_blocked(self) -> Tuple[bool, List[str]]:
@@ -213,11 +217,12 @@ def main(args=None):
     node = TwinSafetyNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
