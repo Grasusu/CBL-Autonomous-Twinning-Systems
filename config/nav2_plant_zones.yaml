@@ -1,0 +1,60 @@
+plant_nav2_mission_node:
+  ros__parameters:
+    start_automatically: true
+    source_entity: gazebo_nav2_robot
+    nav_action_name: navigate_to_pose
+    state_topic: /dt/physical/mission_state
+    inspection_request_topic: /dt/physical/inspection_request
+    inspection_result_topic: /dt/digital/inspection_result
+    digital_state_topic: /dt/digital/mission_state
+    inspection_log_topic: /dt/physical/inspection_log
+
+    frame_id: map
+    publish_initial_pose: true
+    initial_pose_x: 0.0
+    initial_pose_y: 0.0
+    initial_pose_yaw: 0.0
+    return_to_start: true
+    home_x: 0.0
+    home_y: 0.0
+    home_yaw: 0.0
+
+    # Nav2 can plan around obstacles, so these points can cover more of the arena.
+    zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
+    zone_names: ["Start bed", "North inner bed", "East row", "Far east bed", "South east bed", "South center bed", "West lower bed", "West return bed"]
+    zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
+    zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
+    zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+    zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
+    zone_expected_statuses: ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
+
+    control_period_s: 0.20
+    wait_for_nav2_timeout_s: 60.0
+    goal_timeout_s: 90.0
+    inspection_duration_s: 3.0
+    inspection_result_timeout_s: 8.0
+    overuse_alert_hold_s: 2.0
+    summary_republish_period_s: 5.0
+
+inspection_twin_node:
+  ros__parameters:
+    physical_state_topic: /dt/physical/mission_state
+    state_topic: /dt/digital/mission_state
+    inspection_request_topic: /dt/physical/inspection_request
+    inspection_result_topic: /dt/digital/inspection_result
+    safety_state_topic: /dt/safety_state
+    marker_topic: /dt/digital/plant_markers
+
+    zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
+    zone_names: ["Start bed", "North inner bed", "East row", "Far east bed", "South east bed", "South center bed", "West lower bed", "West return bed"]
+    zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
+    zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
+    zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+    zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
+    zone_expected_statuses: ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
+
+    residue_overuse_threshold: 0.50
+    processing_delay_s: 1.0
+    camera_health: healthy
+    frame_id: map
+

@@ -16,6 +16,7 @@ setup(
         (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
         (os.path.join("share", package_name, "docs"), glob("docs/*.md")),
+        (os.path.join("share", package_name, "maps"), glob("maps/*")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -27,9 +28,9 @@ setup(
     entry_points={
         "console_scripts": [
             "plant_mission_node = tb3_pesticide_dt.plant_mission_node:main",
+            "plant_nav2_mission_node = tb3_pesticide_dt.plant_nav2_mission_node:main",
             "inspection_twin_node = tb3_pesticide_dt.inspection_twin_node:main",
             "twin_safety_node = tb3_pesticide_dt.twin_safety_node:main",
         ],
     },
 )
-

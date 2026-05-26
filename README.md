@@ -103,6 +103,50 @@ ros2 launch tb3_pesticide_dt pesticide_dt.launch.py \
   use_sim_time:=true
 ```
 
+## Run: Nav2 Autonomous Mission
+
+Use this version when you want proper autonomous navigation through the mapped arena. Nav2 plans paths around known obstacles; the pesticide DT nodes handle inspection and logging.
+
+Terminal 1, Gazebo:
+
+```bash
+cd /ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+export TURTLEBOT3_MODEL=burger
+ros2 launch my_tb3_world new_world.launch.py
+```
+
+Terminal 2, Nav2:
+
+```bash
+cd /ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+export TURTLEBOT3_MODEL=burger
+ros2 launch turtlebot3_navigation2 navigation2.launch.py \
+  use_sim_time:=True \
+  map:=/ws/src/tb3_pesticide_dt/maps/map.yaml
+```
+
+Wait until Nav2 is ready in RViz. If needed, set the initial pose to the robot start at approximately `x=0, y=0, yaw=0`.
+
+Terminal 3, Nav2 pesticide mission:
+
+```bash
+cd /ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+ros2 launch tb3_pesticide_dt pesticide_nav2_dt.launch.py \
+  params_file:=/ws/src/tb3_pesticide_dt/config/nav2_plant_zones.yaml \
+  use_sim_time:=true
+```
+
+Do not also run `pesticide_dt.launch.py`; that is the non-Nav2 fallback. In Nav2 mode, Nav2 owns robot motion and the mission node sends `NavigateToPose` goals. At the end, it returns to the start pose.
+
 ## Evidence Commands For The Presentation
 
 ```bash
