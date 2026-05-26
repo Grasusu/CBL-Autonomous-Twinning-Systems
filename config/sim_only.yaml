@@ -1,0 +1,68 @@
+plant_mission_node:
+  ros__parameters:
+    start_automatically: true
+    source_entity: gazebo_standin
+    odom_topic: /odom
+    cmd_topic: /cmd_vel_raw
+    state_topic: /dt/physical/mission_state
+    inspection_request_topic: /dt/physical/inspection_request
+    inspection_result_topic: /dt/digital/inspection_result
+    digital_state_topic: /dt/digital/mission_state
+    inspection_log_topic: /dt/physical/inspection_log
+
+    zone_ids: ["plant_a", "plant_b", "plant_c"]
+    zone_names: ["North bed", "Center bed", "South bed"]
+    zone_x: [0.65, 0.65, 0.00]
+    zone_y: [0.00, 0.75, 0.75]
+    zone_yaw: [0.00, 1.57, 3.14]
+    zone_residue_indices: [0.18, 0.74, 0.31]
+    zone_expected_statuses: ["OK", "OVERUSE", "OK"]
+
+    arrival_tolerance_m: 0.12
+    yaw_tolerance_rad: 0.25
+    max_linear_speed: 0.16
+    max_angular_speed: 0.85
+    inspection_duration_s: 3.0
+    inspection_result_timeout_s: 8.0
+    overuse_alert_hold_s: 2.0
+
+inspection_twin_node:
+  ros__parameters:
+    physical_state_topic: /dt/physical/mission_state
+    state_topic: /dt/digital/mission_state
+    inspection_request_topic: /dt/physical/inspection_request
+    inspection_result_topic: /dt/digital/inspection_result
+    safety_state_topic: /dt/safety_state
+    marker_topic: /dt/digital/plant_markers
+
+    zone_ids: ["plant_a", "plant_b", "plant_c"]
+    zone_names: ["North bed", "Center bed", "South bed"]
+    zone_x: [0.65, 0.65, 0.00]
+    zone_y: [0.00, 0.75, 0.75]
+    zone_yaw: [0.00, 1.57, 3.14]
+    zone_residue_indices: [0.18, 0.74, 0.31]
+    zone_expected_statuses: ["OK", "OVERUSE", "OK"]
+
+    residue_overuse_threshold: 0.50
+    processing_delay_s: 1.0
+    camera_health: healthy
+    frame_id: odom
+
+twin_safety_node:
+  ros__parameters:
+    real_scan_topic: /scan
+    sim_scan_topic: /sim/scan
+    input_cmd_topic: /cmd_vel_raw
+    real_cmd_topic: /cmd_vel
+    sim_cmd_topic: /sim/cmd_vel
+    safety_state_topic: /dt/safety_state
+
+    # Gazebo-only course launch files normally expose /scan and /cmd_vel without /sim.
+    use_real_scan: true
+    use_sim_scan: false
+    publish_to_real: true
+    publish_to_sim: false
+    stop_distance: 0.45
+    front_angle_deg: 30.0
+    scan_timeout_s: 1.0
+    fail_safe_on_stale_scan: false
