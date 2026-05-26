@@ -28,6 +28,8 @@ plant_mission_node -> /cmd_vel_raw -> twin_safety_node -> /cmd_vel and /sim/cmd_
 - `inspection_twin_node`: digital twin entity that mirrors state, simulates the hyperspectral camera, publishes RViz plant markers, and returns inspection results.
 - `twin_safety_node`: scanner-based safety bridge from the previous mini-project pattern.
 
+If the safety bridge blocks forward motion, the mission node now reacts instead of hanging: it rotates in place, retries the waypoint, and logs `SKIPPED_BLOCKED` if that zone remains unreachable after several recovery attempts.
+
 All DT data uses standard ROS messages. Structured payloads are JSON in `std_msgs/String`, so no custom message package is needed.
 
 ## Install In The Course Workspace

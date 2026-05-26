@@ -8,6 +8,7 @@ plant_mission_node:
     inspection_request_topic: /dt/physical/inspection_request
     inspection_result_topic: /dt/digital/inspection_result
     digital_state_topic: /dt/digital/mission_state
+    safety_state_topic: /dt/safety_state
     inspection_log_topic: /dt/physical/inspection_log
 
     zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
@@ -26,6 +27,10 @@ plant_mission_node:
     inspection_result_timeout_s: 8.0
     overuse_alert_hold_s: 2.0
     summary_republish_period_s: 5.0
+    safety_recovery_delay_s: 1.0
+    recovery_rotate_s: 2.0
+    recovery_angular_speed: 0.75
+    max_recovery_attempts_per_zone: 3
 
 inspection_twin_node:
   ros__parameters:

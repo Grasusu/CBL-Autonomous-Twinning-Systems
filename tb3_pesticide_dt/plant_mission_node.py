@@ -66,6 +66,7 @@ class PlantMissionNode(Node):
         self.request_topic = str(self.get_parameter("inspection_request_topic").value)
         self.result_topic = str(self.get_parameter("inspection_result_topic").value)
         self.digital_state_topic = str(self.get_parameter("digital_state_topic").value)
+        self.safety_state_topic = str(self.get_parameter("safety_state_topic").value)
         self.log_topic = str(self.get_parameter("inspection_log_topic").value)
 
         self.pose = None
@@ -83,10 +84,17 @@ class PlantMissionNode(Node):
         self.digital_mode = "unknown"
         self.last_state_publish_at = 0.0
         self.last_summary_publish_at = 0.0
+        self.safety_blocked = False
+        self.safety_reasons = []
+        self.safety_blocked_since: Optional[float] = None
+        self.recovery_until: Optional[float] = None
+        self.recovery_attempts = 0
+        self.recovery_direction = 1.0
 
         self.create_subscription(Odometry, self.odom_topic, self.on_odom, 10)
         self.create_subscription(String, self.result_topic, self.on_inspection_result, 10)
         self.create_subscription(String, self.digital_state_topic, self.on_digital_state, 10)
+        self.create_subscription(String, self.safety_state_topic, self.on_safety_state, 10)
 
         self.pub_cmd = self.create_publisher(TwistStamped, self.cmd_topic, 10)
         self.pub_state = self.create_publisher(String, self.state_topic, 10)
@@ -111,6 +119,7 @@ class PlantMissionNode(Node):
         self.declare_parameter("inspection_request_topic", "/dt/physical/inspection_request")
         self.declare_parameter("inspection_result_topic", "/dt/digital/inspection_result")
         self.declare_parameter("digital_state_topic", "/dt/digital/mission_state")
+        self.declare_parameter("safety_state_topic", "/dt/safety_state")
         self.declare_parameter("inspection_log_topic", "/dt/physical/inspection_log")
 
         self.declare_parameter("zone_ids", DEFAULT_ZONE_IDS)
@@ -135,6 +144,10 @@ class PlantMissionNode(Node):
         self.declare_parameter("overuse_next_speed_scale", 0.70)
         self.declare_parameter("degraded_camera_speed_scale", 0.75)
         self.declare_parameter("summary_republish_period_s", 5.0)
+        self.declare_parameter("safety_recovery_delay_s", 1.0)
+        self.declare_parameter("recovery_rotate_s", 2.0)
+        self.declare_parameter("recovery_angular_speed", 0.75)
+        self.declare_parameter("max_recovery_attempts_per_zone", 3)
         self.declare_parameter("frame_id", "base_link")
 
     def _load_zones(self):
@@ -182,6 +195,22 @@ class PlantMissionNode(Node):
         self.digital_camera_health = str(data.get("camera_health", self.digital_camera_health))
         self.digital_mode = str(data.get("mode", self.digital_mode))
 
+    def on_safety_state(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+
+        blocked = bool(data.get("blocked", False))
+        self.safety_reasons = list(data.get("reasons", []))
+
+        if blocked and not self.safety_blocked:
+            self.safety_blocked_since = time.monotonic()
+        if not blocked:
+            self.safety_blocked_since = None
+
+        self.safety_blocked = blocked
+
     def tick(self):
         now = time.monotonic()
 
@@ -200,6 +229,11 @@ class PlantMissionNode(Node):
 
         if self.mode == "NAVIGATING":
             self.handle_navigation()
+            self.publish_state(force=False)
+            return
+
+        if self.mode == "RECOVERING":
+            self.handle_recovery(now)
             self.publish_state(force=False)
             return
 
@@ -227,6 +261,12 @@ class PlantMissionNode(Node):
             self.mode = "WAITING_FOR_ODOM"
             return
 
+        if self.safety_blocked:
+            blocked_for = time.monotonic() - (self.safety_blocked_since or time.monotonic())
+            if blocked_for >= float(self.get_parameter("safety_recovery_delay_s").value):
+                self.begin_recovery()
+                return
+
         zone = self.zones[self.current_index]
         dx = zone.x - self.pose["x"]
         dy = zone.y - self.pose["y"]
@@ -253,6 +293,54 @@ class PlantMissionNode(Node):
         )
         angular = self.angular_control(heading_error)
         self.publish_cmd(linear, angular)
+
+    def begin_recovery(self):
+        zone = self.zones[self.current_index]
+        max_attempts = int(self.get_parameter("max_recovery_attempts_per_zone").value)
+
+        if self.recovery_attempts >= max_attempts:
+            self.log_skipped_zone(zone, "SKIPPED_BLOCKED")
+            self.get_logger().warn(
+                f"{zone.zone_id} could not be reached after {max_attempts} safety recoveries. "
+                "Skipping to keep the demo autonomous."
+            )
+            self.advance_zone()
+            return
+
+        self.recovery_attempts += 1
+        self.recovery_direction *= -1.0
+        self.recovery_until = time.monotonic() + float(self.get_parameter("recovery_rotate_s").value)
+        self.mode = "RECOVERING"
+        self.get_logger().warn(
+            f"Safety blocked near {zone.zone_id}; recovery turn "
+            f"{self.recovery_attempts}/{max_attempts}. reasons={self.safety_reasons}"
+        )
+
+    def handle_recovery(self, now: float):
+        if self.recovery_until is not None and now < self.recovery_until:
+            angular = self.recovery_direction * float(self.get_parameter("recovery_angular_speed").value)
+            self.publish_cmd(0.0, angular)
+            return
+
+        self.publish_stop()
+        self.recovery_until = None
+        self.mode = "NAVIGATING"
+
+    def log_skipped_zone(self, zone, status: str):
+        entry = {
+            "event": "INSPECTION_LOG",
+            "zone_id": zone.zone_id,
+            "zone_name": zone.name,
+            "status": status,
+            "residue_index": None,
+            "confidence": 0.0,
+            "camera_health": self.digital_camera_health,
+            "mission_index": self.current_index,
+            "safety_reasons": self.safety_reasons,
+        }
+        self.summary.append(entry)
+        self.last_result = entry
+        self.pub_log.publish(String(data=json.dumps(entry, sort_keys=True)))
 
     def angular_control(self, error: float) -> float:
         max_angular = float(self.get_parameter("max_angular_speed").value)
@@ -352,6 +440,9 @@ class PlantMissionNode(Node):
         self.request_sent = False
         self.inspection_started_at = None
         self.hold_until = None
+        self.safety_blocked_since = None
+        self.recovery_until = None
+        self.recovery_attempts = 0
 
         if self.current_index >= len(self.zones):
             self.mode = "COMPLETE"
@@ -390,6 +481,9 @@ class PlantMissionNode(Node):
             "pose": self.pose,
             "digital_camera_health": self.digital_camera_health,
             "digital_mode": self.digital_mode,
+            "safety_blocked": self.safety_blocked,
+            "safety_reasons": self.safety_reasons,
+            "recovery_attempts": self.recovery_attempts,
             "behavior_speed_scale": self.behavior_speed_scale(),
             "last_result": self.last_result,
             "completed_inspections": len(self.summary),
