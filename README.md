@@ -12,6 +12,12 @@ inspection_twin_node     -> simulated hyperspectral camera results
 arena_map_node           -> optional RViz/digital arena markers
 ```
 
+For the physical robot lab, Gazebo can also run as a live visual digital twin:
+
+```text
+real TurtleBot3 /odom or /amcl_pose -> gazebo_pose_mirror_node -> Gazebo burger model pose
+```
+
 ## What This Demonstrates
 
 - Autonomous navigation through 8 plant inspection zones.
@@ -20,6 +26,7 @@ arena_map_node           -> optional RViz/digital arena markers
 - Simulated hyperspectral pesticide-residue classification.
 - Inspection logs with `OK` and `OVERUSE` results.
 - A final autonomous return to a calibrated `plant_home` waypoint.
+- Optional live Gazebo pose mirroring for the physical robot demo.
 - Reuse of the course scanner/safety-node idea through the included `twin_safety_node` and hybrid fallback code.
 
 ## Rubric Mapping
@@ -30,6 +37,7 @@ arena_map_node           -> optional RViz/digital arena markers
 
 2. **State synchronization**
    - Mission mode, active plant zone, digital camera health, inspection result, and final status are mirrored through `/dt/physical/mission_state` and `/dt/digital/mission_state`.
+   - For the physical robot demo, `gazebo_pose_mirror_node` can mirror the real robot pose into Gazebo so the digital robot follows the real one visually.
 
 3. **Environmental interaction**
    - The robot moves through the arena, reaches plant zones, waits at each plant, receives a residue classification, and returns home.
@@ -41,11 +49,13 @@ arena_map_node           -> optional RViz/digital arena markers
 
 - `plant_nav2_mission_node`: final full-Nav2 mission controller.
 - `inspection_twin_node`: digital twin that simulates the hyperspectral camera.
+- `gazebo_pose_mirror_node`: copies real robot pose into the Gazebo model for live digital-twin visualization.
 - `arena_map_node`: publishes optional digital markers for the arena.
 - `twin_safety_node`: scanner-based safety bridge from the earlier mini-project pattern.
 - `plant_mission_node`: hybrid/fallback mission controller.
 - `config/nav2_plant_zones.yaml`: final full-Nav2 plant route and calibrated `plant_home`.
 - `maps/map.yaml`: Nav2 map used by the Gazebo demo.
+- `launch/pesticide_world_visual_twin.launch.py`: Gazebo arena plus visual robot only, without fake ROS `/scan` or `/odom` bridge.
 
 ## Install / Build
 
@@ -79,6 +89,14 @@ source install/setup.bash
 ```
 
 So yes: on the lab laptop, clone/copy this repository into `~/turtlebot3_ws/src/tb3_pesticide_dt` unless your course uses a different workspace name.
+
+For Gazebo visualization, this project also expects the course `my_tb3_world` package in the same workspace, because that package contains `new_world.world`. The structure should be:
+
+```text
+~/turtlebot3_ws/src/
+  my_tb3_world/
+  tb3_pesticide_dt/
+```
 
 ## Final Tested Gazebo Demo
 
@@ -402,6 +420,64 @@ Route waypoint 9 is plant_home
 Sent Nav2 return goal plant_home
 Plant inspection route complete: RETURNED_HOME
 ```
+
+### 8. Optional: Run Gazebo As A Live Digital Robot
+
+Use this when you want the Gazebo robot to move in sync with the real TurtleBot3.
+
+Important: do not use `pesticide_world.launch.py` for this physical-robot sync demo. That launch starts simulated ROS `/scan`, `/odom`, and `/tf` bridges, which can conflict with the real robot. Use the visual-only launch below.
+
+Terminal A, start the visual Gazebo arena on the lab laptop:
+
+```bash
+cd ~/turtlebot3_ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+export TURTLEBOT3_MODEL=burger
+
+ros2 launch tb3_pesticide_dt pesticide_world_visual_twin.launch.py gui:=true
+```
+
+Terminal B, mirror the real robot odometry into Gazebo:
+
+```bash
+cd ~/turtlebot3_ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+
+ros2 launch tb3_pesticide_dt gazebo_pose_mirror.launch.py \
+  source_topic:=/odom \
+  source_type:=odom \
+  model_name:=burger \
+  world_name:=default
+```
+
+Now when the real robot moves, the Gazebo `burger` model should follow. If your Nav2 map pose is better aligned than raw odometry, use AMCL instead:
+
+```bash
+ros2 launch tb3_pesticide_dt gazebo_pose_mirror.launch.py \
+  source_topic:=/amcl_pose \
+  source_type:=amcl_pose \
+  model_name:=burger \
+  world_name:=default
+```
+
+If the Gazebo robot follows with a constant offset, keep the same node and add offsets:
+
+```bash
+ros2 launch tb3_pesticide_dt gazebo_pose_mirror.launch.py \
+  source_topic:=/odom \
+  source_type:=odom \
+  x_offset:=0.20 \
+  y_offset:=-0.10 \
+  yaw_offset:=0.0
+```
+
+Use the normal real-robot Nav2 and mission commands from sections 5 and 7 at the same time. Gazebo is only the visual twin; the real robot is still the one being controlled.
 
 ### Real Robot Safety Notes
 

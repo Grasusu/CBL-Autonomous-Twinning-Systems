@@ -33,6 +33,7 @@ setup(
             "twin_safety_node = tb3_pesticide_dt.twin_safety_node:main",
             "arena_map_node = tb3_pesticide_dt.arena_map_node:main",
             "nav2_initial_pose_node = tb3_pesticide_dt.nav2_initial_pose_node:main",
+            "gazebo_pose_mirror_node = tb3_pesticide_dt.gazebo_pose_mirror_node:main",
         ],
     },
 )
