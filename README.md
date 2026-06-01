@@ -53,7 +53,7 @@ Inside the course Docker workspace:
 
 ```bash
 cd /ws/src
-git clone <YOUR_GITHUB_REPO_URL> tb3_pesticide_dt
+git clone https://github.com/Grasusu/CBL-Autonomous-Twinning-Systems.git tb3_pesticide_dt
 
 cd /ws
 source /opt/ros/jazzy/setup.bash
@@ -63,6 +63,22 @@ source install/setup.bash
 ```
 
 If the package is already copied into `/ws/src/tb3_pesticide_dt`, only run the build commands.
+
+On a lab laptop without Docker, put the project inside the `src` folder of a ROS 2 workspace:
+
+```bash
+mkdir -p ~/turtlebot3_ws/src
+cd ~/turtlebot3_ws/src
+git clone https://github.com/Grasusu/CBL-Autonomous-Twinning-Systems.git tb3_pesticide_dt
+
+cd ~/turtlebot3_ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+colcon build --packages-select tb3_pesticide_dt --symlink-install
+source install/setup.bash
+```
+
+So yes: on the lab laptop, clone/copy this repository into `~/turtlebot3_ws/src/tb3_pesticide_dt` unless your course uses a different workspace name.
 
 ## Final Tested Gazebo Demo
 
@@ -190,11 +206,11 @@ zone_residue_indices
 zone_expected_statuses
 ```
 
-## Will This Work On The Real Robot?
+## Real Robot Lab Setup
 
-The ROS nodes are written with standard ROS 2 topics/actions, so the architecture can run on a real TurtleBot3. However, the current working demo is calibrated for the Gazebo world and the provided Nav2 map.
+The ROS nodes are written with standard ROS 2 topics/actions, so the architecture can run on a real TurtleBot3. The Gazebo arena was modeled after the real arena, so the route should transfer conceptually. However, the real robot still needs its own localization/map frame and waypoint calibration.
 
-For a real robot, it will not be plug-and-play. You must:
+Do not use the Gazebo-calibrated coordinates blindly on the robot. For the real robot you must:
 
 - Run the real TurtleBot3 bringup on the robot.
 - Run Nav2 with a map of the real arena, or create one with SLAM.
@@ -203,16 +219,197 @@ For a real robot, it will not be plug-and-play. You must:
 - Use `use_sim_time:=false`.
 - Keep the hyperspectral camera as simulated unless real camera hardware is integrated.
 
-Robot bringup example:
+### 1. Put The Repo On The Lab Laptop
+
+On the lab laptop:
+
+```bash
+mkdir -p ~/turtlebot3_ws/src
+cd ~/turtlebot3_ws/src
+git clone https://github.com/Grasusu/CBL-Autonomous-Twinning-Systems.git tb3_pesticide_dt
+
+cd ~/turtlebot3_ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+colcon build --packages-select tb3_pesticide_dt --symlink-install
+source install/setup.bash
+```
+
+If the lab already has a workspace, use that workspace's `src` folder instead. The important structure is:
+
+```text
+<workspace>/
+  src/
+    tb3_pesticide_dt/
+  build/
+  install/
+  log/
+```
+
+### 2. Start The Real Robot
+
+On the TurtleBot3 through SSH:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
 export TURTLEBOT3_MODEL=burger
 export LDS_MODEL=LDS-02
 ros2 launch turtlebot3_bringup robot.launch.py
 ```
 
-Then run Nav2 and the mission on the laptop/desktop connected to the same ROS domain, using real-map coordinates. In short: the concept and nodes can transfer to the robot, but the coordinates and Nav2 map must be redone for the real arena.
+Use the `ROS_DOMAIN_ID` required by your course if it is not `30`. The robot and lab laptop must use the same value.
+
+### 3. Verify Laptop To Robot Communication
+
+On the lab laptop:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source ~/turtlebot3_ws/install/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+export TURTLEBOT3_MODEL=burger
+
+ros2 topic list
+ros2 topic echo /scan
+ros2 topic echo /odom
+```
+
+If `/scan` and `/odom` do not appear, fix networking/ROS domain before running the mission.
+
+### 4. Use Or Create A Real Arena Map
+
+If the lab already has a Nav2 map of the real arena, use that map file.
+
+If not, create one with SLAM. On the lab laptop while the robot bringup is running:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+export TURTLEBOT3_MODEL=burger
+
+ros2 launch turtlebot3_cartographer cartographer.launch.py use_sim_time:=false
+```
+
+In another terminal, teleoperate slowly around the arena:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+export TURTLEBOT3_MODEL=burger
+
+ros2 run turtlebot3_teleop teleop_keyboard
+```
+
+Save the map:
+
+```bash
+ros2 run nav2_map_server map_saver_cli -f ~/arena_map
+```
+
+This creates:
+
+```text
+~/arena_map.yaml
+~/arena_map.pgm
+```
+
+### 5. Start Nav2 On The Real Robot Map
+
+On the lab laptop:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source ~/turtlebot3_ws/install/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+export TURTLEBOT3_MODEL=burger
+
+ros2 launch turtlebot3_navigation2 navigation2.launch.py \
+  use_sim_time:=false \
+  map:=$HOME/arena_map.yaml
+```
+
+In RViz, set the robot's initial pose on the map before sending goals.
+
+### 6. Calibrate Real Plant Waypoints
+
+Move the robot to each real plant/inspection location using RViz goals or teleop. At each desired location, run:
+
+```bash
+ros2 run tf2_ros tf2_echo map base_footprint
+```
+
+Record the `Translation: [x, y, z]` values. Put those `x` and `y` values into:
+
+```text
+~/turtlebot3_ws/src/tb3_pesticide_dt/config/nav2_plant_zones.yaml
+```
+
+Update:
+
+```yaml
+zone_x
+zone_y
+zone_yaw
+home_x
+home_y
+home_yaw
+```
+
+The first 8 entries are plant inspection stops. The 9th entry, `plant_home`, is the final return location.
+
+### 7. Run The Mission On The Real Robot
+
+Start an evidence terminal first:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source ~/turtlebot3_ws/install/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+
+ros2 topic echo /dt/physical/inspection_log std_msgs/msg/String --full-length
+```
+
+Then start the mission:
+
+```bash
+cd ~/turtlebot3_ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+export TURTLEBOT3_MODEL=burger
+
+ros2 launch tb3_pesticide_dt pesticide_nav2_dt.launch.py \
+  params_file:=~/turtlebot3_ws/src/tb3_pesticide_dt/config/nav2_plant_zones.yaml \
+  use_sim_time:=false
+```
+
+Expected final lines:
+
+```text
+Route waypoint 9 is plant_home
+Sent Nav2 return goal plant_home
+Plant inspection route complete: RETURNED_HOME
+```
+
+### Real Robot Safety Notes
+
+- Test with only 1 or 2 waypoints first before running the whole route.
+- Keep a hand near the robot or be ready to stop the launch with `Ctrl+C`.
+- Run in a clear arena and keep people out of the robot path.
+- Recheck localization in RViz if the robot starts navigating to the wrong place.
+- The simulated hyperspectral camera result is still generated by `inspection_twin_node`; no real camera hardware is required for this proof of concept.
 
 ## GitHub Setup
 
