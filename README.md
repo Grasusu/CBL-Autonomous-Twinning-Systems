@@ -479,6 +479,52 @@ ros2 launch tb3_pesticide_dt gazebo_pose_mirror.launch.py \
 
 Use the normal real-robot Nav2 and mission commands from sections 5 and 7 at the same time. Gazebo is only the visual twin; the real robot is still the one being controlled.
 
+### 9. Quick Test For Gazebo Pose Sync
+
+You can test the Gazebo pose mirror without the physical robot by publishing fake odometry.
+
+Terminal A, start the visual twin:
+
+```bash
+cd /ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+export TURTLEBOT3_MODEL=burger
+
+ros2 launch tb3_pesticide_dt pesticide_world_visual_twin.launch.py gui:=true
+```
+
+Terminal B, start the mirror using `/fake_odom`:
+
+```bash
+cd /ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+
+ros2 launch tb3_pesticide_dt gazebo_pose_mirror.launch.py \
+  source_topic:=/fake_odom \
+  source_type:=odom \
+  model_name:=burger \
+  world_name:=default
+```
+
+Terminal C, publish fake positions:
+
+```bash
+cd /ws
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source install/setup.bash
+
+ros2 topic pub -1 /fake_odom nav_msgs/msg/Odometry "{pose: {pose: {position: {x: 0.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
+ros2 topic pub -1 /fake_odom nav_msgs/msg/Odometry "{pose: {pose: {position: {x: 0.8, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
+ros2 topic pub -1 /fake_odom nav_msgs/msg/Odometry "{pose: {pose: {position: {x: 0.8, y: -0.8, z: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+If the Gazebo robot jumps between those coordinates, the same mirror path will work with the real robot's `/odom`.
+
 ### Real Robot Safety Notes
 
 - Test with only 1 or 2 waypoints first before running the whole route.
