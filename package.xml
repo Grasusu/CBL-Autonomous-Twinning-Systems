@@ -17,6 +17,12 @@
   <depend>ament_index_python</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
+  <exec_depend>my_tb3_world</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>turtlebot3_gazebo</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>turtlebot3_navigation2</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

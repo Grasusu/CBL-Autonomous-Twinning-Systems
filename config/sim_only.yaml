@@ -12,10 +12,10 @@ plant_mission_node:
     inspection_log_topic: /dt/physical/inspection_log
 
     zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
-    zone_names: ["Start bed", "North inner bed", "East row", "Far east bed", "South east bed", "South center bed", "West lower bed", "West return bed"]
-    zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
-    zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
-    zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+    zone_names: ["Start bed", "Upper east bed", "East middle bed", "Lower east bed", "South middle bed", "South center bed", "West lower bed", "West return bed"]
+    zone_x: [0.25, 0.75, 0.85, 0.85, 0.45, -0.25, -0.65, -0.60]
+    zone_y: [-0.20, -0.45, -0.95, -1.45, -2.05, -2.10, -2.05, -1.35]
+    zone_yaw: [0.00, -0.30, -1.20, -1.57, -2.20, 2.90, 2.70, 1.57]
     zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
     zone_expected_statuses: ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
 
@@ -27,10 +27,15 @@ plant_mission_node:
     inspection_result_timeout_s: 8.0
     overuse_alert_hold_s: 2.0
     summary_republish_period_s: 5.0
+    return_to_start_after_route: true
+    return_strategy: odom_retrace
+    return_via_visited_zones: true
+    return_arrival_tolerance_m: 0.15
+    return_yaw_tolerance_rad: 0.30
     safety_recovery_delay_s: 1.0
-    recovery_rotate_s: 2.0
-    recovery_angular_speed: 0.75
-    max_recovery_attempts_per_zone: 3
+    recovery_rotate_s: 3.0
+    recovery_angular_speed: 0.85
+    max_recovery_attempts_per_zone: 6
 
 inspection_twin_node:
   ros__parameters:
@@ -42,16 +47,21 @@ inspection_twin_node:
     marker_topic: /dt/digital/plant_markers
 
     zone_ids: ["plant_a", "plant_b", "plant_c", "plant_d", "plant_e", "plant_f", "plant_g", "plant_h"]
-    zone_names: ["Start bed", "North inner bed", "East row", "Far east bed", "South east bed", "South center bed", "West lower bed", "West return bed"]
-    zone_x: [0.30, 0.80, 1.35, 1.85, 1.75, 1.10, 0.35, -0.35]
-    zone_y: [-0.20, -0.45, -0.45, -0.90, -1.65, -2.20, -2.20, -1.45]
-    zone_yaw: [0.00, -0.30, -0.50, -1.57, -2.20, 3.14, 2.70, 1.57]
+    zone_names: ["Start bed", "Upper east bed", "East middle bed", "Lower east bed", "South middle bed", "South center bed", "West lower bed", "West return bed"]
+    zone_x: [0.25, 0.75, 0.85, 0.85, 0.45, -0.25, -0.65, -0.60]
+    zone_y: [-0.20, -0.45, -0.95, -1.45, -2.05, -2.10, -2.05, -1.35]
+    zone_yaw: [0.00, -0.30, -1.20, -1.57, -2.20, 2.90, 2.70, 1.57]
     zone_residue_indices: [0.18, 0.74, 0.31, 0.56, 0.22, 0.81, 0.44, 0.63]
     zone_expected_statuses: ["OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE", "OK", "OVERUSE"]
 
     residue_overuse_threshold: 0.50
     processing_delay_s: 1.0
     camera_health: healthy
+    frame_id: odom
+
+arena_map_node:
+  ros__parameters:
+    marker_topic: /dt/digital/arena_map
     frame_id: odom
 
 twin_safety_node:
@@ -63,12 +73,11 @@ twin_safety_node:
     sim_cmd_topic: /sim/cmd_vel
     safety_state_topic: /dt/safety_state
 
-    # Gazebo-only course launch files normally expose /scan and /cmd_vel without /sim.
     use_real_scan: true
     use_sim_scan: false
     publish_to_real: true
     publish_to_sim: false
-    stop_distance: 0.45
+    stop_distance: 0.25
     front_angle_deg: 30.0
     scan_timeout_s: 1.0
     fail_safe_on_stale_scan: false

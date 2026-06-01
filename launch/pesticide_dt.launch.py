@@ -43,6 +43,13 @@ def generate_launch_description():
             ),
             Node(
                 package="tb3_pesticide_dt",
+                executable="arena_map_node",
+                name="arena_map_node",
+                output="screen",
+                parameters=[params_file, {"use_sim_time": use_sim_time}],
+            ),
+            Node(
+                package="tb3_pesticide_dt",
                 executable="plant_mission_node",
                 name="plant_mission_node",
                 output="screen",
@@ -50,4 +57,3 @@ def generate_launch_description():
             ),
         ]
     )
-

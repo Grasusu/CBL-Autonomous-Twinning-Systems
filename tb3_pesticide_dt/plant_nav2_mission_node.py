@@ -7,6 +7,8 @@ import time
 from typing import Dict, Optional
 
 import rclpy
+import rclpy.duration
+import rclpy.time
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import NavigateToPose
@@ -14,6 +16,7 @@ from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
+from tf2_ros import Buffer, TransformListener
 
 from tb3_pesticide_dt.pesticide_logic import build_zones
 from tb3_pesticide_dt.plant_mission_node import (
@@ -69,7 +72,11 @@ class PlantNav2MissionNode(Node):
         self.goal_handle = None
         self.goal_in_flight = False
         self.return_goal_sent = False
+        self.localization_started_at: Optional[float] = None
+        self.amcl_home_pose: Optional[Dict] = None  # captured from AMCL at startup
+        self._last_initial_pose_pub: Optional[float] = None
         self.summary = []
+        self.final_status = "RUNNING"
         self.digital_camera_health = "unknown"
         self.digital_mode = "unknown"
         self.latest_feedback = {}
@@ -79,8 +86,12 @@ class PlantNav2MissionNode(Node):
 
         self.nav_client = ActionClient(self, NavigateToPose, self.nav_action_name)
 
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
         self.create_subscription(String, self.result_topic, self.on_inspection_result, 10)
         self.create_subscription(String, self.digital_state_topic, self.on_digital_state, 10)
+        self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self.on_amcl_pose, 10)
 
         self.pub_state = self.create_publisher(String, self.state_topic, 10)
         self.pub_request = self.create_publisher(String, self.request_topic, 10)
@@ -123,10 +134,12 @@ class PlantNav2MissionNode(Node):
         self.declare_parameter("home_x", 0.0)
         self.declare_parameter("home_y", 0.0)
         self.declare_parameter("home_yaw", 0.0)
+        self.declare_parameter("use_captured_home_pose", False)
         self.declare_parameter("publish_initial_pose", True)
         self.declare_parameter("initial_pose_x", 0.0)
         self.declare_parameter("initial_pose_y", 0.0)
         self.declare_parameter("initial_pose_yaw", 0.0)
+        self.declare_parameter("initial_pose_settle_s", 3.0)
 
     def _load_zones(self):
         return build_zones(
@@ -164,6 +177,62 @@ class PlantNav2MissionNode(Node):
         self.digital_camera_health = str(data.get("camera_health", self.digital_camera_health))
         self.digital_mode = str(data.get("mode", self.digital_mode))
 
+    def _capture_home_from_tf(self):
+        """Look up where the odom origin sits in the map frame.
+
+        The robot starts at odom (0, 0, 0).  The TF transform map←odom tells
+        us exactly where that point is in map coordinates — this is the true
+        map-frame home position, independent of AMCL drift or particle jitter.
+        """
+        frame_id = str(self.get_parameter("frame_id").value)
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                frame_id,          # target: map
+                "odom",            # source: odom
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=2.0),
+            )
+            t = tf.transform.translation
+            r = tf.transform.rotation
+            yaw = math.atan2(
+                2.0 * (r.w * r.z + r.x * r.y),
+                1.0 - 2.0 * (r.y * r.y + r.z * r.z),
+            )
+            self.amcl_home_pose = {"x": t.x, "y": t.y, "yaw": yaw}
+            self.get_logger().info(
+                f"TF home captured ({frame_id}←odom): "
+                f"x={t.x:.3f} y={t.y:.3f} yaw={yaw:.3f}"
+            )
+        except Exception as exc:
+            self.get_logger().warn(f"TF home lookup failed: {exc}")
+
+    def on_amcl_pose(self, msg: PoseWithCovarianceStamped):
+        """Track AMCL's estimate of the robot position during the settle phase.
+
+        We keep updating until navigation begins so that the last-received pose
+        (after AMCL has matched the map) is used as the home target on return.
+        This corrects for AMCL converging to a position slightly offset from the
+        configured home_pose (0, 0) due to particle-filter initialisation.
+        """
+        if self.mode not in ("WAITING_FOR_NAV2", "LOCALIZING"):
+            return  # navigation already underway — do not change home pose
+        q = msg.pose.pose.orientation
+        yaw = math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+        )
+        self.amcl_home_pose = {
+            "x": msg.pose.pose.position.x,
+            "y": msg.pose.pose.position.y,
+            "yaw": yaw,
+        }
+        self.get_logger().info(
+            f"AMCL pose update (settling): "
+            f"x={self.amcl_home_pose['x']:.3f} "
+            f"y={self.amcl_home_pose['y']:.3f} "
+            f"yaw={self.amcl_home_pose['yaw']:.3f}"
+        )
+
     def tick(self):
         now = time.monotonic()
 
@@ -175,13 +244,50 @@ class PlantNav2MissionNode(Node):
             if self.nav_client.wait_for_server(timeout_sec=0.0):
                 if bool(self.get_parameter("publish_initial_pose").value):
                     self.publish_initial_pose()
-                self.mode = "NAVIGATING"
-                self.get_logger().info("Nav2 action server is ready; starting plant route")
+                self.localization_started_at = now
+                self.mode = "LOCALIZING"
+                settle_s = float(self.get_parameter("initial_pose_settle_s").value)
+                self.get_logger().info(
+                    f"Nav2 action server is ready; waiting {settle_s:.1f}s for AMCL to settle"
+                )
             elif (now - self.mission_started_at) > float(self.get_parameter("wait_for_nav2_timeout_s").value):
                 self.mode = "COMPLETE"
                 self.publish_summary()
                 self.get_logger().error("Timed out waiting for Nav2 navigate_to_pose action server")
             self.publish_state(True)
+            return
+
+        if self.mode == "LOCALIZING":
+            settle_s = float(self.get_parameter("initial_pose_settle_s").value)
+            # Republish initial pose every 2 s until AMCL acknowledges (covers the case where
+            # AMCL wasn't subscribed yet when we first published).
+            if self.amcl_home_pose is None and bool(self.get_parameter("publish_initial_pose").value):
+                last_pub = self._last_initial_pose_pub if self._last_initial_pose_pub is not None \
+                    else (self.localization_started_at or now)
+                if (now - last_pub) >= 2.0:
+                    self.publish_initial_pose()
+                    self._last_initial_pose_pub = now
+            if self.localization_started_at is None or (now - self.localization_started_at) >= settle_s:
+                # Primary: read where odom-origin is in the map frame via TF.
+                # This is the exact map-frame coordinate of the physical starting
+                # position regardless of how AMCL's particle filter initialised.
+                self._capture_home_from_tf()
+                # Fallback: /amcl_pose subscription (may already be set above)
+                if self.amcl_home_pose is not None:
+                    self.get_logger().info(
+                        f"Home pose captured in map frame: "
+                        f"x={self.amcl_home_pose['x']:.3f} "
+                        f"y={self.amcl_home_pose['y']:.3f} "
+                        f"yaw={self.amcl_home_pose['yaw']:.3f}"
+                    )
+                else:
+                    self.get_logger().warn(
+                        "Could not capture home pose from TF or AMCL. "
+                        "Will use YAML home (0,0) — return may be imprecise."
+                    )
+                self.mode = "NAVIGATING"
+                self.get_logger().info("Starting plant route after localization settle")
+            self.publish_state(False)
             return
 
         if self.mode == "NAVIGATING":
@@ -204,7 +310,13 @@ class PlantNav2MissionNode(Node):
 
         if self.mode == "RETURNING_HOME":
             if not self.goal_in_flight and not self.return_goal_sent:
-                self.send_pose_goal("home", "Return to start", self.home_pose, returning_home=True)
+                home = self.home_goal_pose()
+                if bool(self.get_parameter("use_captured_home_pose").value) and self.amcl_home_pose is None:
+                    self.get_logger().warn(
+                        "amcl_home_pose not captured; returning to configured home_pose. "
+                        "Return position may be inaccurate if AMCL drifted."
+                    )
+                self.send_pose_goal("home", "Return to start", home, returning_home=True)
             self.check_goal_timeout(now)
             self.publish_state(False)
             return
@@ -232,8 +344,22 @@ class PlantNav2MissionNode(Node):
 
     def send_current_zone_goal(self):
         zone = self.zones[self.current_index]
+        if zone.zone_id == "plant_home":
+            home = self.home_goal_pose()
+            self.get_logger().info(
+                "Route waypoint 9 is plant_home; sending the hardcoded final "
+                "Nav2 goal back to the start instead of inspecting it."
+            )
+            self.send_pose_goal(zone.zone_id, zone.name, home, returning_home=True)
+            return
+
         pose = {"x": zone.x, "y": zone.y, "yaw": zone.yaw}
         self.send_pose_goal(zone.zone_id, zone.name, pose, returning_home=False)
+
+    def home_goal_pose(self) -> Dict:
+        # Final return is deliberately hardcoded from YAML. AMCL/TF captured
+        # poses were too easy to confuse with the first plant near the start.
+        return self.home_pose
 
     def send_pose_goal(self, goal_id: str, goal_name: str, pose: Dict, returning_home: bool):
         goal_msg = NavigateToPose.Goal()
@@ -245,7 +371,13 @@ class PlantNav2MissionNode(Node):
 
         future = self.nav_client.send_goal_async(goal_msg, feedback_callback=self.on_nav_feedback)
         future.add_done_callback(lambda fut: self.on_goal_response(fut, goal_id, goal_name, returning_home))
-        self.get_logger().info(f"Sent Nav2 goal {goal_id}: {goal_name} at {pose}")
+        if returning_home:
+            self.get_logger().info(
+                f"Sent Nav2 return goal {goal_id}: {goal_name} at {pose}; "
+                "Nav2 will plan the shortest collision-free path on the map"
+            )
+        else:
+            self.get_logger().info(f"Sent Nav2 goal {goal_id}: {goal_name} at {pose}")
 
     def make_pose_stamped(self, pose: Dict) -> PoseStamped:
         msg = PoseStamped()
@@ -267,6 +399,7 @@ class PlantNav2MissionNode(Node):
             self.goal_in_flight = False
             self.goal_handle = None
             if returning_home:
+                self.publish_return_home_log("RETURN_REJECTED", goal_id, goal_name)
                 self.finish_mission("RETURN_REJECTED")
             else:
                 self.log_skipped_zone("NAV_GOAL_REJECTED", f"Nav2 rejected goal {goal_id}")
@@ -293,6 +426,7 @@ class PlantNav2MissionNode(Node):
 
         if result.status == GoalStatus.STATUS_SUCCEEDED:
             if returning_home:
+                self.publish_return_home_log("RETURNED_HOME", goal_id, goal_name)
                 self.finish_mission("RETURNED_HOME")
             else:
                 self.get_logger().info(f"Arrived at {goal_id}: {goal_name}; starting inspection")
@@ -302,7 +436,9 @@ class PlantNav2MissionNode(Node):
         status_text = self.goal_status_name(result.status)
         error_msg = getattr(result.result, "error_msg", "")
         if returning_home:
-            self.finish_mission(f"RETURN_{status_text}")
+            final_status = f"RETURN_{status_text}"
+            self.publish_return_home_log(final_status, goal_id, goal_name, error_msg)
+            self.finish_mission(final_status)
         else:
             self.log_skipped_zone(f"NAV_{status_text}", error_msg or f"Nav2 status {status_text}")
             self.advance_zone()
@@ -320,6 +456,7 @@ class PlantNav2MissionNode(Node):
         self.goal_handle = None
         self.goal_started_at = None
         if self.mode == "RETURNING_HOME":
+            self.publish_return_home_log("RETURN_TIMEOUT")
             self.finish_mission("RETURN_TIMEOUT")
         else:
             self.log_skipped_zone("NAV_TIMEOUT", "Nav2 goal timed out")
@@ -424,6 +561,29 @@ class PlantNav2MissionNode(Node):
         self.pub_log.publish(String(data=json.dumps(entry, sort_keys=True)))
         self.get_logger().warn(f"{zone.zone_id} skipped: {status} ({reason})")
 
+    def publish_return_home_log(
+        self,
+        status: str,
+        goal_id: str = "plant_home",
+        goal_name: str = "Home / Start",
+        reason: str = "",
+    ):
+        entry = {
+            "event": "RETURN_HOME_LOG",
+            "zone_id": goal_id,
+            "zone_name": goal_name,
+            "status": status,
+            "mission_index": self.current_index,
+            "route_waypoint_count": len(self.zones),
+            "navigation": "nav2",
+            "pose": self.home_goal_pose(),
+        }
+        if reason:
+            entry["reason"] = reason
+        self.last_result = entry
+        self.pub_log.publish(String(data=json.dumps(entry, sort_keys=True)))
+        self.get_logger().info(f"Return home log published: {status} at {entry['pose']}")
+
     def advance_zone(self):
         self.current_index += 1
         self.current_result = None
@@ -446,6 +606,7 @@ class PlantNav2MissionNode(Node):
     def finish_mission(self, final_status: str):
         self.mode = "COMPLETE"
         self.return_goal_sent = False
+        self.final_status = final_status
         self.last_result = {"status": final_status}
         self.publish_summary(final_status)
         self.get_logger().info(f"Plant inspection route complete: {final_status}")
@@ -471,16 +632,24 @@ class PlantNav2MissionNode(Node):
             "last_result": self.last_result,
             "completed_inspections": len(self.summary),
             "return_to_start": bool(self.get_parameter("return_to_start").value),
+            "return_strategy": "nav2_planned_path",
+            "final_status": self.final_status,
             "uptime_s": round(now - self.mission_started_at, 2),
         }
         self.pub_state.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     def publish_summary(self, final_status: str = "COMPLETE"):
+        actual_home = self.home_goal_pose()
         payload = {
             "event": "MISSION_SUMMARY",
             "navigation": "nav2",
             "final_status": final_status,
-            "total_zones": len(self.zones),
+            "return_strategy": "nav2_planned_path",
+            "home_pose_configured": self.home_pose,
+            "home_pose_used": actual_home,
+            "amcl_home_captured": self.amcl_home_pose is not None,
+            "total_route_waypoints": len(self.zones),
+            "total_inspection_zones": len([zone for zone in self.zones if zone.zone_id != "plant_home"]),
             "inspections": self.summary,
         }
         self.pub_log.publish(String(data=json.dumps(payload, sort_keys=True)))
@@ -510,4 +679,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-

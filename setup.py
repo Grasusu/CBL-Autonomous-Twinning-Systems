@@ -31,6 +31,8 @@ setup(
             "plant_nav2_mission_node = tb3_pesticide_dt.plant_nav2_mission_node:main",
             "inspection_twin_node = tb3_pesticide_dt.inspection_twin_node:main",
             "twin_safety_node = tb3_pesticide_dt.twin_safety_node:main",
+            "arena_map_node = tb3_pesticide_dt.arena_map_node:main",
+            "nav2_initial_pose_node = tb3_pesticide_dt.nav2_initial_pose_node:main",
         ],
     },
 )
